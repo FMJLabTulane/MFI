@@ -1,8 +1,10 @@
 # ==============================================================================
 # KANN-MFI: Kolmogorov-Arnold Networks for Mitochondrial Fitness Index
 # ==============================================================================
-# Complete pipeline: MQI calculation → KANN training → Permutation importance
+# Complete pipeline: Auto-calculate all scores → KANN training → Importance
 # Author: <Your Name> | MIT License | 2025
+# 
+# BEGINNER-FRIENDLY: Just give it a Seurat object, it handles the rest!
 # ==============================================================================
 
 suppressPackageStartupMessages({
@@ -16,7 +18,162 @@ suppressPackageStartupMessages({
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ==============================================================================
-# 1) MQI CALCULATION
+# GENE SETS FOR ALL METABOLIC PATHWAYS
+# ==============================================================================
+
+get_gene_sets <- function() {
+  list(
+    # Mitophagy genes
+    mitophagy = c(
+      "PINK1", "PRKN", "SQSTM1", "OPTN", "CALCOCO2", "TAX1BP1", "NBR1",
+      "BNIP3", "BNIP3L", "FUNDC1", "PHB2", "FKBP8", "BCL2L13",
+      "MAP1LC3A", "MAP1LC3B", "MAP1LC3C", "GABARAP", "GABARAPL1", "GABARAPL2",
+      "ULK1", "ULK2", "ATG5", "ATG7", "ATG12", "TOMM20", "TOMM7"
+    ),
+    
+    # OXPHOS genes (Complexes I-V)
+    oxphos = c(
+      # Complex I
+      "NDUFB8", "NDUFS1", "NDUFS2", "NDUFS3", "NDUFS7", "NDUFS8", "NDUFV1", "NDUFV2",
+      # Complex II
+      "SDHA", "SDHB", "SDHC", "SDHD",
+      # Complex III
+      "UQCRC1", "UQCRC2", "UQCRFS1", "CYC1",
+      # Complex IV
+      "COX4I1", "COX5A", "COX5B", "COX6C", "COX7A2", "COX7C",
+      # Complex V
+      "ATP5A1", "ATP5B", "ATP5C1", "ATP5D", "ATP5F1", "ATP5G1", "ATP5H", "ATP5O"
+    ),
+    
+    # TCA cycle genes
+    tca = c(
+      "CS", "ACO1", "ACO2", "IDH1", "IDH2", "IDH3A", "IDH3B", "IDH3G",
+      "OGDH", "SUCLA2", "SUCLG1", "SUCLG2", "SDHA", "FH", "MDH1", "MDH2"
+    ),
+    
+    # Glycolysis genes
+    glycolysis = c(
+      "HK1", "HK2", "HK3", "GPI", "PFKL", "PFKM", "PFKP",
+      "ALDOA", "ALDOB", "ALDOC", "TPI1", "GAPDH", "PGK1", "PGK2",
+      "PGAM1", "PGAM2", "ENO1", "ENO2", "ENO3", "PKM", "PKLR", "LDHA", "LDHB"
+    ),
+    
+    # UPRmt genes
+    uprmt = c(
+      "LONP1", "CLPP", "CLPX", "HTRA2", "HSPD1", "HSPE1", "HSPA9",
+      "DNAJA3", "YME1L1", "SPG7", "AFG3L2", "LRPPRC", "ATF5", "ATF4", "DDIT3"
+    )
+  )
+}
+
+# ==============================================================================
+# AUTO-CALCULATE ALL METABOLIC SCORES
+# ==============================================================================
+
+#' Calculate a module score safely (handles missing genes)
+calc_score_safe <- function(seu, genes, score_name, verbose = TRUE) {
+  present <- genes[genes %in% rownames(seu)]
+  
+  if (length(present) == 0) {
+    if (verbose) message(sprintf("  ⚠ %s: NO genes found! Setting to NA", score_name))
+    seu[[score_name]] <- NA_real_
+    return(seu)
+  }
+  
+  if (length(present) < length(genes)) {
+    missing_pct <- 100 * (length(genes) - length(present)) / length(genes)
+    if (verbose) message(sprintf("  ⚠ %s: %d/%d genes found (%.0f%% missing)",
+                                score_name, length(present), length(genes), missing_pct))
+  } else {
+    if (verbose) message(sprintf("  ✓ %s: %d/%d genes found",
+                                score_name, length(present), length(genes)))
+  }
+  
+  seu <- AddModuleScore(
+    seu,
+    features = list(present),
+    name = paste0(score_name, "_temp"),
+    nbin = 24,
+    ctrl = 100,
+    seed = 42
+  )
+  
+  seu[[score_name]] <- seu[[paste0(score_name, "_temp1")]]
+  seu[[paste0(score_name, "_temp1")]] <- NULL
+  
+  seu
+}
+
+#' Calculate percent.mt if missing
+calc_percent_mt <- function(seu, verbose = TRUE) {
+  if ("percent.mt" %in% colnames(seu@meta.data)) {
+    if (verbose) message("  ✓ percent.mt: already present")
+    return(seu)
+  }
+  
+  # Try to find MT genes (works for human/mouse)
+  mt_genes <- grep("^MT-|^mt-", rownames(seu), value = TRUE, ignore.case = TRUE)
+  
+  if (length(mt_genes) == 0) {
+    if (verbose) message("  ⚠ percent.mt: no MT genes found! Setting to NA")
+    seu$percent.mt <- NA_real_
+    return(seu)
+  }
+  
+  seu <- PercentageFeatureSet(seu, pattern = "^MT-|^mt-", col.name = "percent.mt")
+  if (verbose) message(sprintf("  ✓ percent.mt: calculated from %d genes", length(mt_genes)))
+  
+  seu
+}
+
+#' Calculate ALL required metabolic scores
+#' 
+#' This is the main function that checks what's missing and calculates it
+calculate_metabolic_scores <- function(seu, force_recalc = FALSE, verbose = TRUE) {
+  if (verbose) {
+    cat("\n")
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("  CALCULATING METABOLIC SCORES\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
+  
+  gene_sets <- get_gene_sets()
+  
+  scores_to_calc <- list(
+    list(name = "Mitophagy", genes = gene_sets$mitophagy),
+    list(name = "OXPHOS1", genes = gene_sets$oxphos),
+    list(name = "TCA1", genes = gene_sets$tca),
+    list(name = "Glyco1", genes = gene_sets$glycolysis),
+    list(name = "UPRmtScore", genes = gene_sets$uprmt)
+  )
+  
+  for (score_info in scores_to_calc) {
+    score_name <- score_info$name
+    
+    # Skip if already present and not forcing recalc
+    if (score_name %in% colnames(seu@meta.data) && !force_recalc) {
+      if (verbose) message(sprintf("  ✓ %s: already present (use force_recalc=TRUE to recalculate)", score_name))
+      next
+    }
+    
+    seu <- calc_score_safe(seu, score_info$genes, score_name, verbose = verbose)
+  }
+  
+  # percent.mt
+  seu <- calc_percent_mt(seu, verbose = verbose)
+  
+  if (verbose) {
+    cat("\n")
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("  ✓ ALL SCORES CALCULATED\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
+  
+  seu
+}
+
+# ==============================================================================
+# MQI CALCULATION
 # ==============================================================================
 
 #' Calculate Mitochondrial Quality Index
@@ -56,42 +213,59 @@ compute_MQI <- function(
   as.numeric(good - pen)
 }
 
-#' Add UPRmt score to Seurat
-add_uprmt <- function(seu) {
-  if ("UPRmtScore" %in% colnames(seu@meta.data)) return(seu)
+#' Calculate MQI for Seurat object (with auto-calculation of missing scores)
+calculate_mqi <- function(seu, target_col = "MQI_v1", force_recalc = FALSE, verbose = TRUE) {
+  # Auto-calculate any missing metabolic scores
+  seu <- calculate_metabolic_scores(seu, force_recalc = force_recalc, verbose = verbose)
   
-  genes <- c("LONP1","CLPP","CLPX","HTRA2","HSPD1","HSPE1","HSPA9",
-            "DNAJA3","YME1L1","SPG7","AFG3L2","LRPPRC","ATF5","ATF4","DDIT3")
-  present <- genes[genes %in% rownames(seu)]
+  # Check what we have
+  required <- c("Mitophagy", "OXPHOS1", "percent.mt")
+  optional <- c("TCA1", "Glyco1", "UPRmtScore")
   
-  if (length(present) == 0) {
-    seu$UPRmtScore <- NA_real_
-    return(seu)
+  has_required <- required %in% colnames(seu@meta.data)
+  has_optional <- optional %in% colnames(seu@meta.data)
+  
+  if (verbose) {
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("  MQI CALCULATION\n")
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("\nRequired scores:\n")
+    for (i in seq_along(required)) {
+      cat(sprintf("  %s %s\n", ifelse(has_required[i], "✓", "✗"), required[i]))
+    }
+    cat("\nOptional scores (improve MQI):\n")
+    for (i in seq_along(optional)) {
+      cat(sprintf("  %s %s\n", ifelse(has_optional[i], "✓", "✗"), optional[i]))
+    }
+    cat("\n")
   }
   
-  seu <- AddModuleScore(seu, features = list(present), name = "UPRmt", nbin = 24, ctrl = 100, seed = 42)
-  seu$UPRmtScore <- seu$UPRmt1
-  seu$UPRmt1 <- NULL
-  seu
-}
-
-#' Calculate MQI for Seurat object
-calculate_mqi <- function(seu, target_col = "MQI_v1") {
-  seu <- add_uprmt(seu)
-  required <- c("Mitophagy", "OXPHOS1", "percent.mt")
-  missing <- setdiff(required, colnames(seu@meta.data))
-  if (length(missing) > 0) stop("Missing: ", paste(missing, collapse = ", "))
+  if (!all(has_required)) {
+    stop("Missing required scores! Something went wrong in score calculation.")
+  }
   
+  # Calculate MQI
   seu@meta.data[[target_col]] <- compute_MQI(seu@meta.data)
-  message(sprintf("✓ MQI calculated: range [%.2f, %.2f], mean %.2f",
-                 min(seu[[target_col]], na.rm = TRUE),
-                 max(seu[[target_col]], na.rm = TRUE),
-                 mean(seu[[target_col]], na.rm = TRUE)))
+  
+  # Remove cells with NA MQI
+  n_na <- sum(is.na(seu@meta.data[[target_col]]))
+  if (n_na > 0 && verbose) {
+    message(sprintf("  ⚠ Removing %d cells with NA MQI", n_na))
+  }
+  
+  if (verbose) {
+    finite_vals <- seu@meta.data[[target_col]][is.finite(seu@meta.data[[target_col]])]
+    cat(sprintf("✓ MQI calculated for %d cells\n", length(finite_vals)))
+    cat(sprintf("  Range: [%.3f, %.3f]\n", min(finite_vals), max(finite_vals)))
+    cat(sprintf("  Mean: %.3f, SD: %.3f\n", mean(finite_vals), sd(finite_vals)))
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
+  
   seu
 }
 
 # ==============================================================================
-# 2) REGULATOR GENE SETS
+# MITOCHONDRIAL REGULATOR GENE SETS
 # ==============================================================================
 
 get_regulators <- function() {
@@ -120,7 +294,7 @@ get_regulators <- function() {
 }
 
 # ==============================================================================
-# 3) KANN ARCHITECTURE
+# KANN ARCHITECTURE
 # ==============================================================================
 
 KANSpline1D <- nn_module(
@@ -178,7 +352,7 @@ KANNet <- nn_module(
 )
 
 # ==============================================================================
-# 4) TRAINING
+# TRAINING
 # ==============================================================================
 
 #' Train KANN model
@@ -196,20 +370,39 @@ train_kann <- function(
   set.seed(seed)
   torch_manual_seed(as.integer(seed))
   
+  if (verbose) {
+    cat("\n")
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("  TRAINING KANN MODEL\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
+  
   # Get features
   if (is.null(features)) {
     features <- get_regulators()
     features <- intersect(features, rownames(seu))
+    if (verbose) message(sprintf("Using %d mitochondrial regulators", length(features)))
+    
     if (length(features) < 12) {
+      if (verbose) message("Too few regulators, falling back to highly variable genes...")
       if (length(VariableFeatures(seu)) == 0) {
         seu <- FindVariableFeatures(seu, selection.method = "vst", nfeatures = 2000, verbose = FALSE)
       }
       features <- VariableFeatures(seu)
+      if (verbose) message(sprintf("Using %d variable features instead", length(features)))
     }
   }
   
   # Build X, y
+  if (!target_col %in% colnames(seu@meta.data)) {
+    stop(sprintf("Target column '%s' not found! Run calculate_mqi() first.", target_col))
+  }
+  
   cells <- colnames(seu)[is.finite(seu@meta.data[[target_col]])]
+  if (length(cells) == 0) {
+    stop("No cells with finite MQI values!")
+  }
+  
   expr <- GetAssayData(seu, slot = "data")
   X <- t(as.matrix(expr[features, cells]))
   y <- seu@meta.data[cells, target_col]
@@ -217,6 +410,8 @@ train_kann <- function(
   ok <- apply(X, 1, function(r) all(is.finite(r)))
   X <- X[ok, ]
   y <- y[ok]
+  
+  if (verbose) message(sprintf("Training data: %d cells × %d features", nrow(X), ncol(X)))
   
   # Standardize
   mu <- colMeans(X)
@@ -232,7 +427,8 @@ train_kann <- function(
   opt <- optim_adam(model$parameters, lr = lr)
   loss_fn <- nn_mse_loss()
   
-  if (verbose) message(sprintf("Training: %d cells × %d features → %d hidden → 1", nrow(X), ncol(X), hidden))
+  if (verbose) message(sprintf("\nArchitecture: %d → %d → 1", ncol(X), hidden))
+  if (verbose) message(sprintf("Training for %d epochs...\n", epochs))
   
   for (e in 1:epochs) {
     model$train()
@@ -243,26 +439,34 @@ train_kann <- function(
     opt$step()
     
     if (verbose && (e %% 50 == 0 || e == 1)) {
-      cat(sprintf("Epoch %3d: MSE=%.6f\n", e, loss$item()))
+      cat(sprintf("  Epoch %3d/%d: MSE = %.6f\n", e, epochs, loss$item()))
     }
+  }
+  
+  if (verbose) {
+    cat("\n✓ Training complete!\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
   }
   
   list(
     model = model,
     scaler = list(mu = mu, sd = sd, features = features),
-    cells_used = cells,
-    config = list(hidden = hidden, n_bins = n_bins, epochs = epochs, lr = lr, seed = seed)
+    cells_used = names(y),
+    config = list(hidden = hidden, n_bins = n_bins, epochs = epochs, lr = lr, seed = seed),
+    target_col = target_col
   )
 }
 
 #' Predict with KANN
-predict_kann <- function(seu, fit, out_col = "MQI_pred") {
+predict_kann <- function(seu, fit, out_col = "MQI_pred", verbose = TRUE) {
+  if (verbose) message("Predicting MQI...")
+  
   cells <- colnames(seu)
   expr <- GetAssayData(seu, slot = "data")
   
   missing <- setdiff(fit$scaler$features, rownames(expr))
   if (length(missing) > 0) {
-    warning(sprintf("%d features missing", length(missing)))
+    warning(sprintf("%d/%d features missing", length(missing), length(fit$scaler$features)))
   }
   
   features <- intersect(fit$scaler$features, rownames(expr))
@@ -274,14 +478,16 @@ predict_kann <- function(seu, fit, out_col = "MQI_pred") {
   
   seu[[out_col]] <- NA_real_
   seu[[out_col]][cells] <- pred
+  
+  if (verbose) message(sprintf("✓ Predictions saved to '%s'", out_col))
+  
   seu
 }
 
 # ==============================================================================
-# 5) PERMUTATION IMPORTANCE
+# PERMUTATION IMPORTANCE
 # ==============================================================================
 
-#' Batched prediction helper
 predict_batches <- function(model, X, batch = 32768) {
   n <- nrow(X)
   out <- numeric(n)
@@ -306,13 +512,22 @@ perm_importance <- function(
   set.seed(seed)
   torch_manual_seed(as.integer(seed))
   
-  # Build X using same cells/features as training
+  if (verbose) {
+    cat("\n")
+    cat("═══════════════════════════════════════════════════════════\n")
+    cat("  PERMUTATION IMPORTANCE\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
+  
+  # Build X
   cells <- fit$cells_used[fit$cells_used %in% colnames(seu)]
   expr <- GetAssayData(seu, slot = "data")
   X <- t(as.matrix(expr[fit$scaler$features, cells]))
   X <- sweep(sweep(X, 2, fit$scaler$mu, "-"), 2, fit$scaler$sd, "/")
   
-  y <- seu@meta.data[cells, "MQI_v1"]
+  y <- seu@meta.data[cells, fit$target_col]
+  
+  if (verbose) message(sprintf("Computing importance for %d features (%d repeats)...", ncol(X), repeats))
   
   fit$model$eval()
   base_pred <- predict_batches(fit$model, X, batch)
@@ -322,10 +537,7 @@ perm_importance <- function(
   imp <- numeric(p)
   names(imp) <- colnames(X)
   
-  if (verbose) {
-    message(sprintf("Computing importance: %d features, %d repeats", p, repeats))
-    pb <- txtProgressBar(0, p, style = 3)
-  }
+  if (verbose) pb <- txtProgressBar(0, p, style = 3)
   
   for (j in 1:p) {
     mses <- numeric(repeats)
@@ -339,16 +551,19 @@ perm_importance <- function(
     if (verbose) setTxtProgressBar(pb, j)
   }
   
-  if (verbose) close(pb)
+  if (verbose) {
+    close(pb)
+    cat("\n\n✓ Importance calculation complete!\n")
+    cat("═══════════════════════════════════════════════════════════\n\n")
+  }
   
   sort(imp, decreasing = TRUE)
 }
 
 # ==============================================================================
-# 6) SAVE/LOAD
+# SAVE/LOAD
 # ==============================================================================
 
-#' Save model bundle
 save_kann <- function(fit, dir, overwrite = FALSE) {
   if (dir.exists(dir) && !overwrite) stop("Directory exists. Use overwrite=TRUE")
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
@@ -356,21 +571,23 @@ save_kann <- function(fit, dir, overwrite = FALSE) {
   torch_save(fit$model$state_dict(), file.path(dir, "model.pt"))
   qsave(fit$scaler, file.path(dir, "scaler.qs"))
   qsave(fit$config, file.path(dir, "config.qs"))
+  qsave(fit$target_col, file.path(dir, "target_col.qs"))
   
   writeLines(c(
-    sprintf("KANN-MFI Model"),
+    "KANN-MFI Model",
     sprintf("Features: %d", length(fit$scaler$features)),
     sprintf("Hidden: %d", fit$config$hidden),
-    sprintf("Trained: %s", Sys.time())
+    sprintf("Target: %s", fit$target_col),
+    sprintf("Saved: %s", Sys.time())
   ), file.path(dir, "README.txt"))
   
-  message("✓ Saved to: ", dir)
+  message(sprintf("✓ Model saved to: %s/", dir))
 }
 
-#' Load model bundle
 load_kann <- function(dir) {
   scaler <- qread(file.path(dir, "scaler.qs"))
   config <- qread(file.path(dir, "config.qs"))
+  target_col <- qread(file.path(dir, "target_col.qs"))
   
   model <- KANNet(
     length(scaler$features),
@@ -383,14 +600,15 @@ load_kann <- function(dir) {
   model$load_state_dict(state)
   model$eval()
   
-  list(model = model, scaler = scaler, config = config)
+  message(sprintf("✓ Model loaded from: %s/", dir))
+  
+  list(model = model, scaler = scaler, config = config, target_col = target_col)
 }
 
 # ==============================================================================
-# 7) PLOTTING
+# PLOTTING
 # ==============================================================================
 
-#' Quick diagnostic plot
 plot_predictions <- function(seu, obs_col = "MQI_v1", pred_col = "MQI_pred") {
   df <- seu@meta.data[, c(obs_col, pred_col)]
   df <- df[complete.cases(df), ]
@@ -400,15 +618,14 @@ plot_predictions <- function(seu, obs_col = "MQI_v1", pred_col = "MQI_pred") {
   
   ggplot(df, aes_string(x = obs_col, y = pred_col)) +
     geom_point(alpha = 0.3, size = 0.5) +
-    geom_smooth(method = "lm", se = FALSE) +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
     annotate("text", x = -Inf, y = Inf, hjust = -0.1, vjust = 1.5,
-            label = sprintf("R² = %.3f\nRMSE = %.3f", r2, rmse)) +
+            label = sprintf("R² = %.3f\nRMSE = %.3f\nn = %d", r2, rmse, nrow(df))) +
     labs(title = "KANN Predictions", x = "Observed MQI", y = "Predicted MQI") +
-    theme_classic()
+    theme_classic(base_size = 12)
 }
 
-#' Importance barplot
 plot_importance <- function(imp, top_n = 30, title = "Permutation Importance") {
   df <- data.frame(
     gene = names(head(imp, top_n)),
@@ -419,6 +636,13 @@ plot_importance <- function(imp, top_n = 30, title = "Permutation Importance") {
   ggplot(df, aes(x = gene, y = importance)) +
     geom_col(fill = "steelblue") +
     coord_flip() +
-    labs(title = title, x = NULL, y = "ΔMSE") +
-    theme_classic()
+    labs(title = title, x = NULL, y = "ΔMSE (increase in prediction error)") +
+    theme_classic(base_size = 12)
 }
+
+cat("\n✓ KANN-MFI functions loaded!\n\n")
+cat("Quick start:\n")
+cat("  1. seu <- calculate_mqi(seu)\n")
+cat("  2. fit <- train_kann(seu, epochs=300)\n")
+cat("  3. seu <- predict_kann(seu, fit)\n")
+cat("  4. plot_predictions(seu)\n\n")
