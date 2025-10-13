@@ -251,7 +251,7 @@ MIT License - Free to use, modify, and share!
 
 - **Issues?** Open an issue on GitHub
 - **Questions?** Check `example.R` for detailed walkthrough
-- **Email:** your.email@institution.edu
+- **Email:** mqadir@tulane.edu
 
 ---
 
