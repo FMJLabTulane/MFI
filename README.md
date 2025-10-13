@@ -389,7 +389,7 @@ If you use this code in your research, please cite:
 
 ```
 @software{kann_mfi_2025,
-  author = {<Your Name>},
+  author = {<Fahd Qadir aka Dragonmasterx87>},
   title = {KANN-MFI: Kolmogorov-Arnold Networks for Mitochondrial Fitness},
   year = {2025},
   url = {https://github.com/<your-username>/kann-mfi}
