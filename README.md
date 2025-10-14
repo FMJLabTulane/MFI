@@ -1,6 +1,6 @@
 # KANN-MFI
 
-**Predict Mitochondrial Fitness from single-cell RNA-seq** using Kolmogorov-Arnold Networks
+**Predict Mitochondrial Fitness from single-cell RNA-seq** using Kolmogorov-Arnold Neural Networks
 
 <p align="center">
   <img src="logo.png" width="200"/>
