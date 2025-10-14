@@ -85,7 +85,7 @@ saveRDS(seu, "seurat_with_mqi.rds")
 MQI = (Mitophagy + OXPHOS + UPRmt) - penalties
 ```
 
-**Higher MQI = healthier mitochondria**
+**Higher MFI = healthier mitochondria**
 
 Penalties for:
 - High mitochondrial DNA %
