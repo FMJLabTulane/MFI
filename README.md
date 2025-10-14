@@ -6,10 +6,10 @@
   <img src="logo.png" width="200"/>
 </p>
 
-## 🎯 What it does
+## What it does
 
 **You give it:** A Seurat object with normalized counts  
-**It gives you:** Mitochondrial Quality Index (MQI) for every cell
+**It gives you:** Mitochondrial Function Index (MFI) for every cell
 
 ### The pipeline:
 1. **Auto-calculates metabolic scores** (Mitophagy, OXPHOS, TCA, Glycolysis, UPRmt, mt%)
