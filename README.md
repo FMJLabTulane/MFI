@@ -238,7 +238,7 @@ seu <- calculate_mqi(seu, force_recalc = TRUE)
   author = {<Fahd Qadir aka Dragonmasterx87>},
   title = {KANN-MFI: Kolmogorov-Arnold Networks for Mitochondrial Fitness Prediction},
   year = {2025},
-  url = {https://github.com/<your-username>/kann-mfi}
+  url = {https://github.com/FMJLabTulane/kann-mfi}
 }
 ```
 
