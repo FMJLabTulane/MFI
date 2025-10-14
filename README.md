@@ -17,7 +17,7 @@
 3. **Trains a neural network** to predict MQI from ~200 mitochondrial genes
 4. **Finds important genes** that drive mitochondrial quality
 
-## 🚀 Quick Start (Complete Beginner)
+## Quick Start (Complete Noob)
 
 ### Install (one time)
 ```r
@@ -58,28 +58,28 @@ saveRDS(seu, "seurat_with_mqi.rds")
 
 ---
 
-## 📋 Requirements
+## Requirements
 
 ### What you need:
 - A Seurat object with **normalized counts** (run `NormalizeData()` if you haven't)
 - That's it!
 
 ### What gets calculated automatically:
-- ✅ Mitophagy score (27 genes)
-- ✅ OXPHOS score (Complex I-V genes)
-- ✅ TCA cycle score
-- ✅ Glycolysis score
-- ✅ UPRmt score (15 genes)
-- ✅ Mitochondrial % (from MT- genes)
-- ✅ MQI (combines all of the above)
+- Mitophagy score (27 genes)
+- OXPHOS score (Complex I-V genes)
+- TCA cycle score
+- Glycolysis score
+- UPRmt score (15 genes)
+- Mitochondrial % (from MT- genes)
+- MQI (combines all of the above)
 
 **All you need is raw RNA counts!** 🎉
 
 ---
 
-## 📖 What is MQI?
+## What is MFI?
 
-**Mitochondrial Quality Index** = a single number that summarizes mitochondrial health
+**Mitochondrial Function Index** = a single number that summarizes mitochondrial health
 
 ```
 MQI = (Mitophagy + OXPHOS + UPRmt) - penalties
@@ -114,7 +114,7 @@ Penalties for:
 
 ---
 
-## 🎓 Examples
+## Examples
 
 ### Basic usage
 ```r
@@ -179,7 +179,7 @@ for (ct in unique(seu$cell_type)) {
 
 ---
 
-## 🗂️ Files in this repo
+## Files in this repo
 
 ```
 kann-mfi/
@@ -195,6 +195,9 @@ kann-mfi/
 ---
 
 ## ❓ FAQ
+
+**Q: I'm so lost what do I do?  
+A: Create an issue on the issue tab :)
 
 **Q: I only have a count matrix, not a Seurat object**  
 A: 
@@ -228,7 +231,7 @@ seu <- calculate_mqi(seu, force_recalc = TRUE)
 
 ---
 
-## 📚 Citation
+## Citation
 
 ```bibtex
 @software{kann_mfi_2025,
