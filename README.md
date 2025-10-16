@@ -13,7 +13,7 @@
 
 ### The pipeline:
 1. **Auto-calculates metabolic scores** (Mitophagy, OXPHOS, TCA, Glycolysis, UPRmt, mt%)
-2. **Computes MQI** from those scores
+2. **Computes MFI** from those scores
 3. **Trains a neural network** to predict MQI from ~200 mitochondrial genes
 4. **Finds important genes** that drive mitochondrial quality
 
