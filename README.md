@@ -14,7 +14,7 @@
 ### The pipeline:
 1. **Auto-calculates metabolic scores** (Mitophagy, OXPHOS, TCA, Glycolysis, UPRmt, mt%)
 2. **Computes MFI** from those scores
-3. **Trains a neural network** to predict MQI from ~200 mitochondrial genes
+3. **Trains a neural network** to predict MFI from ~200 mitochondrial genes
 4. **Finds important genes** that drive mitochondrial quality
 
 ## Quick Start (Complete Noob)
@@ -33,8 +33,8 @@ source("kann_mfi.R")
 # Load your data
 seu <- readRDS("my_seurat_object.rds")
 
-# Step 1: Calculate MQI (auto-calculates everything!)
-seu <- calculate_mqi(seu)
+# Step 1: Calculate MFI (auto-calculates everything!)
+seu <- calculate_MFI(seu)
 
 # Step 2: Train neural network
 fit <- train_kann(seu, epochs = 300)
@@ -51,7 +51,7 @@ plot_importance(imp)
 
 # Step 6: Save everything
 save_kann(fit, dir = "my_model")
-saveRDS(seu, "seurat_with_mqi.rds")
+saveRDS(seu, "seurat_with_MFI.rds")
 ```
 
 **That's it!** Check out `example.R` for a complete annotated walkthrough.
@@ -82,7 +82,7 @@ saveRDS(seu, "seurat_with_mqi.rds")
 **Mitochondrial Function Index** = a single number that summarizes mitochondrial health
 
 ```
-MQI = (Mitophagy + OXPHOS + UPRmt) - penalties
+MFI = (Mitophagy + OXPHOS + UPRmt) - penalties
 ```
 
 **Higher MFI = healthier mitochondria**
@@ -103,12 +103,12 @@ Penalties for:
 - `Glyco1` - glycolysis
 - `UPRmtScore` - mitochondrial unfolded protein response
 - `percent.mt` - mitochondrial fraction
-- **`MQI_v1`** - calculated mitochondrial quality index ⭐
-- **`MQI_pred`** - KANN prediction of MFI ⭐
+- **`MFI_v1`** - calculated mitochondrial quality index ⭐
+- **`MFI_pred`** - KANN prediction of MFI ⭐
 
 ### Files created:
 - `pred_vs_obs.pdf` - How well the model works
-- `importance.pdf` - Top genes that determine MQI
+- `importance.pdf` - Top genes that determine MFI
 - `importance_all_genes.csv` - Complete gene rankings
 - `my_model/` - Saved model (reusable!)
 
@@ -122,7 +122,7 @@ source("kann_mfi.R")
 seu <- readRDS("data.rds")
 
 # Everything in 4 lines:
-seu <- calculate_mqi(seu)
+seu <- calculate_MFI(seu)
 fit <- train_kann(seu, epochs = 300)
 seu <- predict_kann(seu, fit)
 plot_predictions(seu)
@@ -137,7 +137,7 @@ fit <- load_kann("my_model")
 
 # Apply to new data
 new_seu <- readRDS("new_data.rds")
-new_seu <- calculate_mqi(new_seu)
+new_seu <- calculate_MFI(new_seu)
 new_seu <- predict_kann(new_seu, fit)
 ```
 
@@ -146,8 +146,8 @@ new_seu <- predict_kann(new_seu, fit)
 # After running the pipeline
 library(ggplot2)
 
-# MQI by cell type
-ggplot(seu@meta.data, aes(x = cell_type, y = MQI_v1)) +
+# MFI by cell type
+ggplot(seu@meta.data, aes(x = cell_type, y = MFI_v1)) +
   geom_boxplot() +
   theme_classic()
 
@@ -164,11 +164,11 @@ for (ct in unique(seu$cell_type)) {
 ## Understanding the Results
 
 ### Good performance:
-- **R² > 0.7** - Model captures most MQI variation
+- **R² > 0.7** - Model captures most MFI variation
 - **RMSE < 0.5** - Predictions are close to observed
 
 ### Importance scores (ΔMSE):
-- **> 0.01** - Gene strongly affects MQI
+- **> 0.01** - Gene strongly affects MFI
 - **0.001-0.01** - Moderate effect
 - **< 0.001** - Weak effect
 
@@ -226,7 +226,7 @@ A: Yes! Gene names should be in the same format as your Seurat object (e.g., `Pp
 **Q: What if I already have metabolic scores?**  
 A: The pipeline checks for existing scores and skips them. Use `force_recalc=TRUE` to recalculate:
 ```r
-seu <- calculate_mqi(seu, force_recalc = TRUE)
+seu <- calculate_MFI(seu, force_recalc = TRUE)
 ```
 
 ---
