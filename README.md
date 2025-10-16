@@ -71,7 +71,7 @@ saveRDS(seu, "seurat_with_mqi.rds")
 - Glycolysis score
 - UPRmt score (15 genes)
 - Mitochondrial % (from MT- genes)
-- MQI (combines all of the above)
+- MFI (combines all of the above)
 
 **All you need is raw RNA counts!** 🎉
 
@@ -104,7 +104,7 @@ Penalties for:
 - `UPRmtScore` - mitochondrial unfolded protein response
 - `percent.mt` - mitochondrial fraction
 - **`MQI_v1`** - calculated mitochondrial quality index ⭐
-- **`MQI_pred`** - KANN prediction of MQI ⭐
+- **`MQI_pred`** - KANN prediction of MFI ⭐
 
 ### Files created:
 - `pred_vs_obs.pdf` - How well the model works
@@ -161,7 +161,7 @@ for (ct in unique(seu$cell_type)) {
 
 ---
 
-## 📊 Understanding the Results
+## Understanding the Results
 
 ### Good performance:
 - **R² > 0.7** - Model captures most MQI variation
@@ -194,7 +194,7 @@ kann-mfi/
 
 ---
 
-## ❓ FAQ
+## FAQ
 
 **Q: I'm so lost what do I do?  
 A: Create an issue on the issue tab :)
@@ -250,7 +250,7 @@ MIT License - Free to use, modify, and share!
 
 ---
 
-## 🆘 Help
+## Help
 
 - **Issues?** Open an issue on GitHub
 - **Questions?** Check `example.R` for detailed walkthrough
@@ -258,7 +258,7 @@ MIT License - Free to use, modify, and share!
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 Based on:
 - Kolmogorov-Arnold representation theorem
